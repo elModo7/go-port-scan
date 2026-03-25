@@ -8,14 +8,14 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/fatih/color"
 )
 
 var (
-	author  string
-	version string
-
+	author    string
+	version   string
 	startPort int
 	endPort   int
 	targetIP  string
@@ -24,19 +24,17 @@ var (
 func banner() {
 	name := fmt.Sprintf("go-port-scan (v.%s)", version)
 	banner := `
-	________                __________              __              _________                     
-	/  _____/  ____          \______   \____________/  |_           /   _____/ ____ _____    ____  
-   /   \  ___ /  _ \   ______ |     ___/  _ \_  __ \   __\  ______  \_____  \_/ ___\\__  \  /    \ 
-   \    \_\  (  <_> ) /_____/ |    |  (  <_> )  | \/|  |   /_____/  /        \  \___ / __ \|   |  \
-	\______  /\____/          |____|   \____/|__|   |__|           /_______  /\___  >____  /___|  /
-		   \/                                                              \/     \/     \/     \/ 										
+  ________      __________              __   _________                     
+ /  _____/  ____\______   \____________/  |_/   _____/ ____ _____    ____  
+/   \  ___ /  _ \|     ___/  _ \_  __ \   __\_____  \_/ ___\\__  \  /    \ 
+\    \_\  (  <_> )    |  (  <_> )  | \/|  | /        \  \___ / __ \|   |  \
+ \______  /\____/|____|   \____/|__|   |__|/_______  /\___  >____  /___|  /
+        \/                                         \/     \/     \/     \/ 
 	`
 
-	// window width
-	all_lines := strings.Split(banner, "\n")
-	w := len(all_lines[1])
+	allLines := strings.Split(banner, "\n")
+	w := len(allLines[1])
 
-	// Centered
 	fmt.Println(banner)
 	color.Green(fmt.Sprintf("%[1]*s", -w, fmt.Sprintf("%[1]*s", (w+len(name))/2, name)))
 	color.Blue(fmt.Sprintf("%[1]*s", -w, fmt.Sprintf("%[1]*s", (w+len(author))/2, author)))
@@ -44,54 +42,53 @@ func banner() {
 }
 
 func init() {
-
+	version = "1.0.1"
+	author = "lismore, elModo7"
 	banner()
 }
 
 func main() {
-
-	//define array for port range
-	var PORTS []int
-
-	//capture arguments
-	flag.StringVar(&targetIP, "targetIP", "127.0.0.1", "Target IP")
-	flag.IntVar(&startPort, "startPort", 20, "Start Port")
-	flag.IntVar(&endPort, "endPort", 1024, "End Port")
+	flag.StringVar(&targetIP, "t", "127.0.0.1", "Target IP")
+	flag.IntVar(&startPort, "sp", 20, "Start Port")
+	flag.IntVar(&endPort, "ep", 1024, "End Port")
 	flag.Parse()
 
-	//generate a range of ports between start and end port values
-	for i := startPort; i <= endPort; i++ {
-		PORTS = append(PORTS, i)
+	if startPort < 1 || endPort > 65535 || startPort > endPort {
+		log.Fatal("invalid port range. Please specify startPort and endPort between 1 and 65535, with startPort less than or equal to endPort.")
 	}
 
-	//define a waitGroup
 	var wg sync.WaitGroup
 
-	//iterate through range of ports calling the checkPortOpen function
-	for _, dstPort := range PORTS {
+	// Limit concurrent connections
+	const maxConcurrent = 200
+	sem := make(chan struct{}, maxConcurrent)
+
+	for port := startPort; port <= endPort; port++ {
 		wg.Add(1)
-		go checkPortOpen(&wg, strconv.Itoa(dstPort))
+		go checkPortOpen(&wg, sem, port)
 	}
 
-	//waiting for all goroutines to finish
 	wg.Wait()
 }
 
-func checkPortOpen(wg *sync.WaitGroup, port string) {
-
-	//deferring wait group for done
+func checkPortOpen(wg *sync.WaitGroup, sem chan struct{}, port int) {
 	defer wg.Done()
 
-	//connects to the address on the target network
-	_, err := net.Dial("tcp", targetIP+":"+port)
+	sem <- struct{}{}
+	defer func() { <-sem }()
 
-	//handle any error
+	address := net.JoinHostPort(targetIP, strconv.Itoa(port))
+
+	conn, err := net.DialTimeout("tcp", address, 800*time.Millisecond)
 	if err != nil {
-		//TODO
-		//log.Printf("Port %s closed", port)
-
-	} else {
-		//write out to console if port is open
-		log.Printf("Port %s open", port)
+		return
 	}
+	defer func(conn net.Conn) {
+		err := conn.Close()
+		if err != nil {
+			fmt.Println("Error closing connection:", err)
+		}
+	}(conn)
+
+	log.Printf("Port %d open", port)
 }
