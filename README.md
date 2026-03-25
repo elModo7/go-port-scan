@@ -1,6 +1,9 @@
 # Go Port Scan
 
-A simple and fast Go implemented port scanner.
+<img width="536" height="290" alt="image" src="https://github.com/user-attachments/assets/e9b21113-e643-4db1-988d-753ea1958a54" />
+
+A simple and fast port scanner in Go.
+
 
 ## Building/Compiling EXE
 
@@ -11,7 +14,7 @@ go build GoPortScan.go
 ## Running
 
 ```CMD
-GoPortScan.exe -targetIP=127.0.0.1 -startPort=20 -endPort=1024
+GoPortScan.exe -t=127.0.0.1 -sp=20 -ep=1024
 ```
 ## Contributing
 
